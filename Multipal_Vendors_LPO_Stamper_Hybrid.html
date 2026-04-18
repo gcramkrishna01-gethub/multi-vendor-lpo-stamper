@@ -1,0 +1,1952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LPO Sales Order Stamper — Multi Vendor</title>
+<meta name="description" content="Upload Union Coop BOF PDFs and Excel sheet. Automatically matches BOF numbers and stamps Sales Order numbers onto PDFs.">
+<meta property="og:title" content="Union Coop LPO → Sales Order Stamper">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap');
+
+:root {
+  --bg:#0b0c10; --surface:#13141a; --card:#1c1d26; --border:#2c2d3f;
+  --accent:#e8a020; --accent2:#ff5c5c; --green:#00dfa2; --yellow:#ffd166;
+  --text:#e6e7f0; --muted:#63647f;
+  --mono:'DM Mono',monospace; --sans:'Syne',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(232,160,32,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(232,160,32,.03) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.blob{position:fixed;border-radius:50%;pointer-events:none;z-index:0;filter:blur(60px)}
+.b1{width:500px;height:500px;background:rgba(232,160,32,.08);top:-180px;left:-150px;animation:bm 9s ease-in-out infinite}
+.b2{width:350px;height:350px;background:rgba(0,223,162,.06);bottom:-100px;right:-80px;animation:bm 12s ease-in-out infinite reverse}
+@keyframes bm{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(30px,25px) scale(1.05)}}
+
+.wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:44px 24px 100px}
+
+header{text-align:center;margin-bottom:48px}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(232,160,32,.12);border:1px solid rgba(232,160,32,.3);color:var(--accent);font-family:var(--mono);font-size:11px;letter-spacing:.14em;padding:4px 14px;border-radius:20px;text-transform:uppercase;margin-bottom:18px}
+.badge::before{content:'●';font-size:8px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+h1{font-size:clamp(26px,5vw,44px);font-weight:800;letter-spacing:-.025em;line-height:1.1;margin-bottom:10px;background:linear-gradient(130deg,#fff 0%,#f0c060 45%,#00dfa2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.sub{color:var(--muted);font-size:13px;font-family:var(--mono)}
+
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 18px;margin-bottom:26px}
+.fs{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted);padding:3px 0;flex-shrink:0}
+.fn{width:19px;height:19px;border-radius:5px;background:rgba(232,160,32,.2);border:1px solid rgba(232,160,32,.3);color:var(--accent);font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.fa{color:var(--border);font-size:14px;padding:0 6px}
+
+.ugrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+@media(max-width:600px){.ugrid{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;transition:border-color .25s}
+.card:hover{border-color:rgba(232,160,32,.35)}
+.ch{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.sb{width:26px;height:26px;border-radius:7px;background:rgba(232,160,32,.18);border:1px solid rgba(232,160,32,.35);color:var(--accent);font-family:var(--mono);font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ct{font-size:14px;font-weight:700;letter-spacing:-.01em}
+.cs{font-size:11px;color:var(--muted);font-family:var(--mono)}
+
+.dz{border:1.5px dashed var(--border);border-radius:10px;padding:18px 14px;text-align:center;cursor:pointer;transition:all .2s}
+.dz:hover,.dz.over{border-color:var(--accent);background:rgba(232,160,32,.04)}
+.dz-i{font-size:26px;margin-bottom:6px;display:block}
+.dz-t{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.dz-t em{color:var(--accent);font-style:normal;text-decoration:underline;cursor:pointer}
+
+.fl{margin-top:10px;display:flex;flex-direction:column;gap:5px}
+.fi{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 11px;font-family:var(--mono);font-size:11px}
+.fi .fn2{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fi .fz{color:var(--muted)}
+.fi .fx{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;transition:color .15s}
+.fi .fx:hover{color:var(--accent2)}
+
+.pw{margin-top:12px;display:none}
+.pw.show{display:block}
+.pl{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px}
+.pt{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;background:var(--surface);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.pt th{background:rgba(232,160,32,.1);color:var(--accent);padding:6px 10px;text-align:left;font-weight:500;border-bottom:1px solid var(--border)}
+.pt td{padding:5px 10px;color:var(--text);border-bottom:1px solid rgba(255,255,255,.04)}
+.pt tr:last-child td{border-bottom:none}
+.pt .sc{color:var(--green)}
+
+/* PDF previews scroll */
+.pdf-previews{margin-top:12px;display:none;flex-direction:column;gap:8px;max-height:282px;overflow-y:auto;overflow-x:hidden;padding-right:4px}
+.pdf-previews.show{display:flex}
+.pdf-previews::-webkit-scrollbar{width:4px}
+.pdf-previews::-webkit-scrollbar-track{background:transparent}
+.pdf-previews::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.pdf-previews::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+.pdf-prev-item{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 10px;transition:border-color .2s}
+.pdf-prev-item:hover{border-color:rgba(232,160,32,.4)}
+.pdf-thumb-wrap{width:52px;height:68px;flex-shrink:0;border-radius:6px;overflow:hidden;background:#222;border:1px solid var(--border);position:relative;cursor:pointer}
+.pdf-thumb-wrap canvas{width:100%;height:100%;object-fit:cover;display:block}
+.pdf-thumb-wrap .thumb-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--muted)}
+.pdf-prev-info{flex:1;min-width:0}
+.pdf-prev-name{font-family:var(--mono);font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px}
+.pdf-prev-meta{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.pdf-prev-btns{display:flex;gap:5px;flex-shrink:0}
+.pdf-eye{background:rgba(232,160,32,.15);color:var(--accent);border:1px solid rgba(232,160,32,.3);border-radius:6px;padding:4px 10px;font-family:var(--sans);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s}
+.pdf-eye:hover{background:rgba(232,160,32,.3)}
+.pdf-rm{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:4px 6px;transition:color .15s;border-radius:5px}
+.pdf-rm:hover{color:var(--accent2);background:rgba(255,92,92,.1)}
+
+.cfg{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;margin-bottom:18px}
+.cg{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+@media(max-width:700px){.cg{grid-template-columns:1fr 1fr}}
+
+label{display:block;font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.09em;text-transform:uppercase;margin-bottom:5px}
+input[type="number"],input[type="text"],select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;outline:none;transition:border-color .2s}
+input:focus,select:focus{border-color:var(--accent)}
+
+.btnrow{display:flex;gap:10px;margin-bottom:14px}
+.pbtn{flex:1;padding:15px;background:linear-gradient(135deg,var(--accent),#f5c842);border:none;border-radius:12px;color:#1a1000;font-family:var(--sans);font-size:15px;font-weight:700;letter-spacing:-.01em;cursor:pointer;transition:opacity .2s,transform .15s}
+.pbtn:hover{opacity:.9}
+.pbtn:active{transform:scale(.99)}
+.pbtn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.cbtn{padding:15px 20px;background:transparent;border:1.5px solid var(--border);border-radius:12px;color:var(--muted);font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;white-space:nowrap;display:flex;align-items:center;gap:7px}
+.cbtn:hover{border-color:var(--accent2);color:var(--accent2);background:rgba(255,92,92,.06)}
+.cbtn:disabled{opacity:.3;cursor:not-allowed}
+
+.pbar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:14px;display:none}
+.pbar.show{display:block}
+.pf{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:2px;width:0%;transition:width .3s ease}
+
+.log{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;font-family:var(--mono);font-size:11px;max-height:260px;overflow-y:auto;display:none;margin-bottom:14px;line-height:1.6}
+.log.show{display:block}
+.li{color:var(--muted)} .lok{color:var(--green)} .lw{color:var(--yellow)} .le{color:var(--accent2)} .lh{color:var(--accent);font-weight:500}
+
+/* Stats & results */
+.res{display:none}
+.res.show{display:block}
+.stats{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 20px;font-family:var(--mono);font-size:11px;cursor:pointer;transition:all .2s;user-select:none;display:flex;flex-direction:column;gap:2px}
+.stat:hover{border-color:rgba(232,160,32,.5);background:rgba(232,160,32,.05)}
+.stat.active-all{border-color:var(--accent);background:rgba(232,160,32,.12)}
+.stat.active-ok{border-color:var(--green);background:rgba(0,223,162,.1)}
+.stat.active-miss{border-color:var(--yellow);background:rgba(255,209,102,.08)}
+.stat-hint{font-size:10px;color:var(--muted);letter-spacing:.05em}
+.sv{font-size:24px;font-weight:800;font-family:var(--sans);display:block;line-height:1}
+.sv.g{color:var(--green)} .sv.y{color:var(--yellow)} .sv.b{color:var(--accent)}
+
+
+
+.rh{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px}
+.rt{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.rt span{color:var(--text);font-weight:600}
+.da{background:rgba(0,223,162,.12);color:var(--green);border:1px solid rgba(0,223,162,.25);border-radius:8px;padding:7px 16px;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;transition:all .2s}
+.da:hover{background:rgba(0,223,162,.25)}
+
+.ri{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-radius:10px;padding:12px 16px;margin-bottom:8px;transition:border-color .2s}
+.ri.ok{background:var(--card);border:1px solid rgba(0,223,162,.2)}
+.ri.miss{background:var(--card);border:1px solid rgba(255,209,102,.15)}
+.ri.ok:hover{border-color:rgba(0,223,162,.45)}
+.ri.miss:hover{border-color:rgba(255,209,102,.35)}
+.rn{flex:1;font-family:var(--mono);font-size:12px;min-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.rl{font-family:var(--mono);font-size:11px;color:var(--yellow);background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.2);padding:2px 8px;border-radius:5px;white-space:nowrap}
+.rs{font-family:var(--mono);font-size:11px;color:var(--green);background:rgba(0,223,162,.1);border:1px solid rgba(0,223,162,.2);padding:2px 8px;border-radius:5px;white-space:nowrap}
+
+.rmiss{font-family:var(--mono);font-size:11px;color:var(--accent2);background:rgba(255,92,92,.08);border:1px solid rgba(255,92,92,.18);padding:2px 8px;border-radius:5px}
+.ri-btns{display:flex;gap:6px;flex-shrink:0}
+.db{background:var(--green);color:#000;border:none;border-radius:7px;padding:6px 13px;font-family:var(--sans);font-size:11px;font-weight:700;cursor:pointer;transition:opacity .2s}
+.db:hover{opacity:.82}
+.vb{background:rgba(232,160,32,.18);color:var(--accent);border:1px solid rgba(232,160,32,.3);border-radius:7px;padding:6px 13px;font-family:var(--sans);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s}
+.vb:hover{background:rgba(232,160,32,.3)}
+
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px}
+.modal-bg.open{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:18px;width:100%;max-width:900px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.modal-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.modal-title{flex:1;font-family:var(--mono);font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modal-badges{display:flex;gap:6px;flex-shrink:0}
+.modal-close{background:rgba(255,92,92,.15);color:var(--accent2);border:1px solid rgba(255,92,92,.25);border-radius:8px;padding:5px 12px;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;flex-shrink:0}
+.modal-close:hover{background:rgba(255,92,92,.3)}
+.modal-body{flex:1;overflow:hidden;background:#1a1a1a}
+.modal-body iframe{width:100%;height:100%;border:none;display:block}
+.modal-foot{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-top:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;gap:8px}
+.modal-info{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.modal-dl{background:var(--green);color:#000;border:none;border-radius:8px;padding:8px 18px;font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;transition:opacity .2s}
+.modal-dl:hover{opacity:.85}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* Vendor selector */
+.vendor-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:0;position:relative;z-index:2}
+.vbtn{padding:12px 10px;border-radius:10px;border:2px solid var(--border);background:transparent;
+  color:var(--muted);font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;
+  transition:all .2s;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px;
+  pointer-events:all;position:relative;z-index:2}
+.vbtn:hover{border-color:var(--accent);color:var(--accent);background:rgba(232,160,32,.06)}
+.vbtn.active{border-color:var(--accent);background:rgba(232,160,32,.15);color:var(--accent)}
+.vbtn .vi{font-size:22px}
+.vbtn .vn{font-size:11px;font-family:var(--mono)}
+.vbtn.custom-active{border-color:var(--green);background:rgba(0,223,162,.12);color:var(--green)}
+
+/* Custom vendor teach panel */
+.teach-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:18px;margin-top:14px;display:none}
+.teach-panel.show{display:block}
+.teach-canvas-wrap{position:relative;display:block;cursor:crosshair;border:1px solid var(--border);border-radius:8px;overflow:hidden;max-width:100%;user-select:none}
+.teach-canvas-wrap canvas{display:block;max-width:100%;height:auto}
+.teach-hint{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px}
+.teach-step-btn{padding:7px 16px;border-radius:8px;border:1px solid var(--accent);
+  background:rgba(232,160,32,.1);color:var(--accent);font-family:var(--sans);font-size:12px;
+  font-weight:700;cursor:pointer;transition:all .2s}
+.teach-step-btn:hover{background:rgba(232,160,32,.25)}
+.teach-step-btn.green{border-color:var(--green);background:rgba(0,223,162,.1);color:var(--green)}
+.teach-step-btn.green:hover{background:rgba(0,223,162,.25)}
+</style>
+</head>
+<body>
+<div class="blob b1"></div>
+<div class="blob b2"></div>
+
+<div class="wrap">
+  <header>
+    <div class="badge">Multi-Vendor LPO Automation</div>
+    <h1>LPO → Sales Order Stamper</h1>
+    <p class="sub">Select Vendor · Match LPO number · Stamp Sales Order automatically</p>
+  </header>
+
+  <!-- Step 1: Vendor Selection -->
+  <div class="card" style="margin-bottom:18px">
+    <div class="ch" style="margin-bottom:14px">
+      <div class="sb">01</div>
+      <div><div class="ct">Select Vendor</div><div class="cs">Only the selected vendor's LPO format will be processed</div></div>
+    </div>
+    <div class="vendor-grid" id="vendorGrid">
+      <button class="vbtn active" id="vbtn-unioncoop" onclick="selectVendor('unioncoop')">
+        <span class="vi">🏬</span><span>Union Coop</span><span class="vn">BOF No.</span>
+      </button>
+      <button class="vbtn" id="vbtn-deliveryhero" onclick="selectVendor('deliveryhero')">
+        <span class="vi">🦸</span><span>Delivery Hero</span><span class="vn">PO No.</span>
+      </button>
+      <button class="vbtn" id="vbtn-carrefour" onclick="selectVendor('carrefour')">
+        <span class="vi">🛒</span><span>Carrefour</span><span class="vn">ORDER + TOTAL B. TAX</span>
+      </button>
+      <button class="vbtn" id="vbtn-custom" onclick="selectVendor('custom')">
+        <span class="vi">➕</span><span>Add New Vendor</span><span class="vn">teach by sample</span>
+      </button>
+    </div>
+    <div id="vendorHint" style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--muted)">
+      Selected: <strong id="vendorLabel" style="color:var(--accent)">Union Coop</strong> <span id="vendorDesc">— BOF number matched, stamps next to "BRANCH ORDER FORM"</span>
+    </div>
+
+    <!-- Custom Vendor Teach Panel -->
+    <div class="teach-panel" id="teachPanel">
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text);margin-bottom:12px;font-weight:600">
+        🎓 Teach a New Vendor — Upload a sample LPO PDF
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px">
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:4px">Vendor Name</label>
+          <input type="text" id="customVendorName" placeholder="e.g. Lulu Express" style="width:180px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:4px">LPO Number Regex (optional)</label>
+          <input type="text" id="customLpoRegex" placeholder="e.g. Order No[:\s]+(\d{7,})" style="width:260px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:4px">Total Column Header <span style="text-transform:none;letter-spacing:0">(optional — skip the box-drawing)</span></label>
+          <input type="text" id="customTotalHeader" placeholder="e.g. TOTAL B. TAX, Net Total, Grand Total" style="width:260px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 10px;outline:none">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px">if set, value is read from below this column header (works across multi-page LPOs)</div>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <input type="file" id="teachPdfIn" accept=".pdf" style="display:none"
+               onchange="if(this.files.length) handleTeachPdf(this.files)">
+        <input type="file" id="teachPdfIn2" accept=".pdf" style="display:none">
+        <div id="teachPdfDrop" style="border:1.5px dashed var(--border);border-radius:8px;padding:12px 16px;text-align:center;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:10px;min-width:280px"
+             onclick="document.getElementById('teachPdfIn').click()"
+             ondragover="event.preventDefault();this.style.borderColor='var(--green)'"
+             ondragleave="this.style.borderColor='var(--border)'"
+             ondrop="event.preventDefault();this.style.borderColor='var(--border)';handleTeachPdf(event.dataTransfer.files)">
+          <span style="font-size:20px">📄</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">
+            Drop PDF or <em style="color:var(--accent);font-style:normal;text-decoration:underline">browse</em>
+          </span>
+        </div>
+        <span id="teachFileName" style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:10px;display:block;margin-top:6px">No file selected</span>
+      </div>
+      <div id="teachCanvasArea" style="display:none">
+        <div style="font-family:var(--mono);font-size:11px;margin-bottom:8px">
+          <span id="teachStepLabel" style="color:var(--accent);font-weight:600">Step 1:</span>
+          <span id="teachStepDesc" style="color:var(--muted)"> Draw a box around the LPO number</span>
+        </div>
+        <div class="teach-canvas-wrap" id="teachCanvasWrap">
+          <canvas id="teachCanvas"></canvas>
+        </div>
+        <div class="teach-hint" id="teachHint">🟢 Click and drag to highlight the LPO number area</div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="teach-step-btn" id="teachNextBtn" onclick="teachNext()" style="display:none">Next → Mark Stamp Location</button>
+          <button class="teach-step-btn" id="teachNext2Btn" onclick="teachNext2()" style="display:none">Next → Mark Total PO Value (optional)</button>
+          <button class="teach-step-btn green" id="teachSaveBtn" onclick="teachSave()" style="display:none">✓ Save Vendor</button>
+          <button class="teach-step-btn" id="teachSkipTotalBtn" onclick="teachSkipTotal()" style="display:none;border-color:var(--muted);color:var(--muted)">Skip Total → Save</button>
+          <button class="teach-step-btn" onclick="teachReset()" style="border-color:var(--accent2);color:var(--accent2)">↺ Reset</button>
+        </div>
+      </div>
+      <div id="customVendorList" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <div class="ugrid">
+    <!-- Excel -->
+    <div class="card">
+      <div class="ch">
+        <div class="sb">02</div>
+        <div><div class="ct">Excel File</div><div class="cs" id="xlSubtitle">LPO numbers + Sales Orders</div></div>
+      </div>
+      <input type="file" id="xlIn" accept=".xlsx,.xls,.csv" style="display:none">
+      <div class="dz" id="xlDrop">
+        <span class="dz-i">📊</span>
+        <div class="dz-t">Drop here or <em onclick="document.getElementById('xlIn').click()">browse</em></div>
+        <div class="dz-t">.xlsx / .xls / .csv</div>
+      </div>
+      <div class="fl" id="xlList"></div>
+      <div class="pw" id="prevWrap">
+        <div class="pl">Preview — first 5 rows</div>
+        <table class="pt" id="prevTbl"></table>
+      </div>
+    </div>
+
+    <!-- PDFs -->
+    <div class="card">
+      <div class="ch">
+        <div class="sb">03</div>
+        <div><div class="ct" id="pdfCardTitle">PDF Files</div><div class="cs" id="pdfCardSub">Union Coop BOF documents</div></div>
+      </div>
+      <input type="file" id="pdfIn" accept=".pdf" multiple style="display:none">
+      <div class="dz" id="pdfDrop">
+        <span class="dz-i">📄</span>
+        <div class="dz-t">Drop here or <em onclick="document.getElementById('pdfIn').click()">browse</em></div>
+        <div class="dz-t">Multiple PDFs supported</div>
+      </div>
+      <div class="pdf-previews" id="pdfPreviews"></div>
+    </div>
+  </div>
+
+  <!-- Config -->
+  <div class="cfg">
+    <div class="ch" style="margin-bottom:0">
+      <div class="sb">04</div>
+      <div><div class="ct">Configuration</div><div class="cs">Excel columns &amp; stamp options</div></div>
+    </div>
+    <div class="cg">
+      <div>
+        <label>BOF / PO Number Column</label>
+        <input type="text" id="lpoCol" value="A" maxlength="3">
+      </div>
+      <div>
+        <label>Sales Order Column</label>
+        <input type="text" id="soCol" value="B" maxlength="3">
+      </div>
+      <div>
+        <label>Total Value Column <span style="color:var(--muted);text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input type="text" id="totalCol" value="" maxlength="3" placeholder="e.g. C">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px">blank = skip value match</div>
+      </div>
+      <div>
+        <label>Reason / Region Column <span style="color:var(--muted);text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input type="text" id="reasonCol" value="" maxlength="3" placeholder="e.g. D">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px">appended to output filename</div>
+      </div>
+      <div>
+        <label>Skip Header Rows</label>
+        <input type="number" id="skipRows" value="1" min="0" max="20">
+      </div>
+      <div>
+        <label>Stamp Font Size (pt)</label>
+        <input type="number" id="fontSize" value="0" min="0" max="72" step="1">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px">0 = auto-match heading size</div>
+      </div>
+      <div>
+        <label>Value Match Tolerance</label>
+        <input type="number" id="valTolerance" value="0.01" min="0" max="100" step="0.01">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px">allowed ± difference</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="btnrow">
+    <button class="pbtn" id="procBtn" disabled onclick="run()">⚡ Extract · Match · Stamp PDFs</button>
+    <button class="cbtn" id="clearBtn" disabled onclick="clearAll()">🗑 Clear All</button>
+  </div>
+
+  <div class="pbar" id="pbar"><div class="pf" id="pfill"></div></div>
+  <div class="log" id="logBox"></div>
+
+  <!-- Results -->
+  <div class="res" id="resArea">
+    <div class="stats" id="statsBar"></div>
+    <div class="rh">
+      <div class="rt" id="listLabel">Showing <span>0</span> PDFs</div>
+      <button class="da" id="dlFilterBtn" onclick="dlFiltered()">⬇ Download as ZIP</button>
+    </div>
+    <div id="resItems"></div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-bg" id="pdfModal" onclick="closeModal(event)">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title" id="modalTitle">—</div>
+        <div class="modal-badges" id="modalBadges"></div>
+        <button class="modal-close" onclick="closeModalDirect()">✕ Close</button>
+      </div>
+      <div class="modal-body"><iframe id="modalFrame" src="about:blank"></iframe></div>
+      <div class="modal-foot">
+        <div class="modal-info" id="modalInfo"></div>
+        <button class="modal-dl" id="modalDlBtn" onclick="dlFromModal()">⬇ Download This PDF</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── State ─────────────────────────────────────────────────────────
+let xlFile=null, pdfFiles=[], results=[], activeFilter='all';
+let modalResultIdx=-1, modalBlobUrl=null;
+let activeVendor = 'unioncoop';
+
+// Custom vendors stored in memory (survives session)
+// Custom vendors — persisted in localStorage
+let customVendors = [];
+
+function loadSavedVendors() {
+  try {
+    const saved = localStorage.getItem('lpo_custom_vendors');
+    if (saved) {
+      customVendors = JSON.parse(saved);
+      customVendors.forEach(cv => addVendorButton(cv));
+      renderCustomVendorList();
+      if (customVendors.length) log(`Loaded ${customVendors.length} saved vendor(s) from storage`, 'lok');
+    }
+  } catch(e) { console.warn('Could not load saved vendors:', e); }
+}
+
+function persistVendors() {
+  try { localStorage.setItem('lpo_custom_vendors', JSON.stringify(customVendors)); }
+  catch(e) { console.warn('Could not save vendors:', e); }
+}
+
+function addVendorButton(cv) {
+  const grid = document.getElementById('vendorGrid');
+  if (document.getElementById('vbtn-' + cv.id)) return; // already exists
+  const btn = document.createElement('button');
+  btn.className = 'vbtn'; btn.id = 'vbtn-' + cv.id;
+  btn.innerHTML = `<button class="vbtn-del" onclick="event.stopPropagation();deleteCustomVendor('${cv.id}')" title="Delete vendor">✕</button><span class="vi">🏷</span><span>${cv.name}</span><span class="vn">custom</span>`;
+  btn.onclick = () => selectVendor(cv.id);
+  const addBtn = document.getElementById('vbtn-custom');
+  grid.insertBefore(btn, addBtn);
+}
+
+// Teach state
+let teachStep = 0; // 0=idle,1=draw LPO box,2=draw stamp box,3=draw total box
+let teachPdfData = null;
+let teachLpoArea = null, teachStampArea = null, teachTotalArea = null;
+let teachDragging = false, teachStartX, teachStartY;
+let teachScale = 1;
+
+// ── Vendor Selection ──────────────────────────────────────────────
+const VENDOR_INFO = {
+  unioncoop:    { label:'Union Coop',    desc:'BOF number matched, stamps next to "BRANCH ORDER FORM"' },
+  deliveryhero: { label:'Delivery Hero', desc:'PO number matched, stamps above "Store Information:"' },
+  carrefour:    { label:'Carrefour',     desc:'ORDER number matched, Total extracted from "TOTAL B. TAX" column, stamps "Sales Order:" in blank zone' },
+};
+
+function selectVendor(v) {
+  activeVendor = v;
+  // Update button styles
+  document.querySelectorAll('.vbtn').forEach(b => b.classList.remove('active','custom-active'));
+  const btn = document.getElementById('vbtn-' + v);
+  if (btn) btn.classList.add(v === 'custom' ? 'custom-active' : 'active');
+
+  const teachPanel = document.getElementById('teachPanel');
+  const vendorLabel = document.getElementById('vendorLabel');
+  const vendorDesc  = document.getElementById('vendorDesc');
+
+  if (v === 'custom') {
+    teachPanel.classList.add('show');
+    vendorLabel.textContent = 'Add New Vendor';
+    vendorLabel.style.color = 'var(--green)';
+    vendorDesc.textContent  = ' — upload a sample PDF and mark the LPO number + stamp location';
+    return;
+  }
+
+  teachPanel.classList.remove('show');
+  vendorLabel.style.color = 'var(--accent)';
+
+  const custom = customVendors.find(cv => cv.id === v);
+  if (custom) {
+    vendorLabel.textContent = custom.name;
+    vendorDesc.textContent  = ' — custom vendor, using taught LPO + stamp positions';
+  } else {
+    const info = VENDOR_INFO[v] || {};
+    vendorLabel.textContent = info.label || v;
+    vendorDesc.textContent  = ' — ' + (info.desc || '');
+  }
+
+  // Update PDF card labels
+  const subLabel = custom ? custom.name : (VENDOR_INFO[v]?.label || v);
+  document.getElementById('pdfCardSub').textContent = subLabel + ' LPO documents';
+}
+
+// ── Teach Panel ───────────────────────────────────────────────────
+async function handleTeachPdf(files) {
+  const f = [...files].find(f => /\.pdf$/i.test(f.name));
+  if (!f) return;
+  document.getElementById('teachFileName').textContent = f.name;
+  const buf = await f.arrayBuffer();
+  teachPdfData = new Uint8Array(buf);
+  await renderTeachCanvas();
+  document.getElementById('teachCanvasArea').style.display = 'block';
+  teachStep = 1;
+  updateTeachUI();
+}
+
+async function renderTeachCanvas() {
+  const pdf = await pdfjsLib.getDocument({ data: teachPdfData }).promise;
+  const page = await pdf.getPage(1);
+  const wrap = document.getElementById('teachCanvasWrap');
+  const maxW = Math.min(wrap.parentElement.offsetWidth - 20, 860);
+  const vp0 = page.getViewport({ scale: 1 });
+  teachScale = maxW / vp0.width;
+  const vp = page.getViewport({ scale: teachScale });
+  const canvas = document.getElementById('teachCanvas');
+  canvas.width = vp.width; canvas.height = vp.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+  // Attach mouse events
+  canvas.onmousedown = teachMouseDown;
+  canvas.onmousemove = teachMouseMove;
+  canvas.onmouseup   = teachMouseUp;
+  // Touch support
+  canvas.ontouchstart = e => { e.preventDefault(); teachMouseDown(e.touches[0]); };
+  canvas.ontouchmove  = e => { e.preventDefault(); teachMouseMove(e.touches[0]); };
+  canvas.ontouchend   = e => { e.preventDefault(); teachMouseUp(e.changedTouches[0]); };
+}
+
+function getCanvasPos(e) {
+  const canvas = document.getElementById('teachCanvas');
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function teachMouseDown(e) {
+  if (teachStep === 0) return;
+  teachDragging = true;
+  const p = getCanvasPos(e);
+  teachStartX = p.x; teachStartY = p.y;
+}
+function teachMouseMove(e) {
+  if (!teachDragging || teachStep === 0) return;
+  const p = getCanvasPos(e);
+  drawTeachOverlay(teachStartX, teachStartY, p.x, p.y);
+}
+function teachMouseUp(e) {
+  if (!teachDragging || teachStep === 0) return;
+  teachDragging = false;
+  const p = getCanvasPos(e);
+  const canvas = document.getElementById('teachCanvas');
+  const x1 = Math.min(teachStartX, p.x), y1 = Math.min(teachStartY, p.y);
+  const x2 = Math.max(teachStartX, p.x), y2 = Math.max(teachStartY, p.y);
+  if (x2-x1 < 10 || y2-y1 < 10) return; // too small
+  const area = {
+    x: x1/teachScale, y: y1/teachScale,
+    w: (x2-x1)/teachScale, h: (y2-y1)/teachScale,
+    pageW: canvas.width/teachScale, pageH: canvas.height/teachScale
+  };
+  if (teachStep === 1) {
+    teachLpoArea = area;
+    document.getElementById('teachNextBtn').style.display = '';
+    document.getElementById('teachHint').textContent = '✅ LPO area marked! Click "Next" to mark the stamp location.';
+  } else if (teachStep === 2) {
+    teachStampArea = area;
+    document.getElementById('teachNext2Btn').style.display = '';
+    document.getElementById('teachSkipTotalBtn').style.display = '';
+    document.getElementById('teachHint').textContent = '✅ Stamp location marked! Mark the Total PO Value area (recommended) or skip to save.';
+  } else if (teachStep === 3) {
+    teachTotalArea = area;
+    document.getElementById('teachSaveBtn').style.display = '';
+    document.getElementById('teachHint').textContent = '✅ Total PO Value area marked! Click "Save Vendor" to finish.';
+  }
+  drawTeachOverlay(x1, y1, x2, y2);
+}
+function drawTeachOverlay(x1, y1, x2, y2) {
+  const canvas = document.getElementById('teachCanvas');
+  const ctx = canvas.getContext('2d');
+  // Draw active rectangle on top
+  ctx.save();
+  // Step colors: 1=green (LPO), 2=blue (stamp), 3=orange (total)
+  const stepColors = {
+    1: { stroke: '#4ade80', fill: 'rgba(74,222,128,.15)' },
+    2: { stroke: '#38bdf8', fill: 'rgba(56,189,248,.15)' },
+    3: { stroke: '#fb923c', fill: 'rgba(251,146,60,.18)' },
+  };
+  const sc = stepColors[teachStep] || stepColors[1];
+  ctx.strokeStyle = sc.stroke;
+  ctx.fillStyle   = sc.fill;
+  ctx.lineWidth = 2;
+  const rx = Math.min(x1,x2), ry = Math.min(y1,y2);
+  const rw = Math.abs(x2-x1), rh = Math.abs(y2-y1);
+  ctx.fillRect(rx, ry, rw, rh);
+  ctx.strokeRect(rx, ry, rw, rh);
+  ctx.restore();
+  // Also redraw previously-saved boxes
+  if (teachStep >= 2 && teachLpoArea) {
+    ctx.save();
+    ctx.strokeStyle = '#4ade80'; ctx.fillStyle = 'rgba(74,222,128,.15)'; ctx.lineWidth = 2;
+    ctx.fillRect(teachLpoArea.x*teachScale, teachLpoArea.y*teachScale, teachLpoArea.w*teachScale, teachLpoArea.h*teachScale);
+    ctx.strokeRect(teachLpoArea.x*teachScale, teachLpoArea.y*teachScale, teachLpoArea.w*teachScale, teachLpoArea.h*teachScale);
+    ctx.restore();
+  }
+  if (teachStep >= 3 && teachStampArea) {
+    ctx.save();
+    ctx.strokeStyle = '#38bdf8'; ctx.fillStyle = 'rgba(56,189,248,.15)'; ctx.lineWidth = 2;
+    ctx.fillRect(teachStampArea.x*teachScale, teachStampArea.y*teachScale, teachStampArea.w*teachScale, teachStampArea.h*teachScale);
+    ctx.strokeRect(teachStampArea.x*teachScale, teachStampArea.y*teachScale, teachStampArea.w*teachScale, teachStampArea.h*teachScale);
+    ctx.restore();
+  }
+}
+function updateTeachUI() {
+  let stepLabel = 'Step 1:', stepDesc = ' Draw a box around the LPO / Order number', hint = '🟢 Click and drag to highlight the LPO number area';
+  if (teachStep === 2) {
+    stepLabel = 'Step 2:';
+    stepDesc  = ' Draw a box where the SO stamp should go';
+    hint      = '🔵 Click and drag to mark where the Sales Order number should be stamped';
+  } else if (teachStep === 3) {
+    stepLabel = 'Step 3:';
+    stepDesc  = ' Draw a box around the Total PO Value (for value-match validation)';
+    hint      = '🟠 Click and drag to highlight the Total PO Value on the PDF';
+  }
+  document.getElementById('teachStepLabel').textContent = stepLabel;
+  document.getElementById('teachStepDesc').textContent  = stepDesc;
+  document.getElementById('teachHint').textContent      = hint;
+}
+function teachNext() {
+  teachStep = 2;
+  updateTeachUI();
+  document.getElementById('teachNextBtn').style.display = 'none';
+  // Re-render canvas to clear step-1 drawing (keeps saved LPO box via drawTeachOverlay)
+  renderTeachCanvas().then(() => {
+    if (teachLpoArea) {
+      const canvas = document.getElementById('teachCanvas');
+      const ctx = canvas.getContext('2d');
+      ctx.save(); ctx.strokeStyle='#4ade80'; ctx.fillStyle='rgba(74,222,128,.15)'; ctx.lineWidth=2;
+      ctx.fillRect(teachLpoArea.x*teachScale, teachLpoArea.y*teachScale, teachLpoArea.w*teachScale, teachLpoArea.h*teachScale);
+      ctx.strokeRect(teachLpoArea.x*teachScale, teachLpoArea.y*teachScale, teachLpoArea.w*teachScale, teachLpoArea.h*teachScale);
+      ctx.restore();
+    }
+  });
+}
+function teachNext2() {
+  teachStep = 3;
+  updateTeachUI();
+  document.getElementById('teachNext2Btn').style.display = 'none';
+  document.getElementById('teachSkipTotalBtn').style.display = 'none';
+  // Re-render canvas showing the previously saved boxes
+  renderTeachCanvas().then(() => {
+    const canvas = document.getElementById('teachCanvas');
+    const ctx = canvas.getContext('2d');
+    if (teachLpoArea) {
+      ctx.save(); ctx.strokeStyle='#4ade80'; ctx.fillStyle='rgba(74,222,128,.15)'; ctx.lineWidth=2;
+      ctx.fillRect(teachLpoArea.x*teachScale, teachLpoArea.y*teachScale, teachLpoArea.w*teachScale, teachLpoArea.h*teachScale);
+      ctx.strokeRect(teachLpoArea.x*teachScale, teachLpoArea.y*teachScale, teachLpoArea.w*teachScale, teachLpoArea.h*teachScale);
+      ctx.restore();
+    }
+    if (teachStampArea) {
+      ctx.save(); ctx.strokeStyle='#38bdf8'; ctx.fillStyle='rgba(56,189,248,.15)'; ctx.lineWidth=2;
+      ctx.fillRect(teachStampArea.x*teachScale, teachStampArea.y*teachScale, teachStampArea.w*teachScale, teachStampArea.h*teachScale);
+      ctx.strokeRect(teachStampArea.x*teachScale, teachStampArea.y*teachScale, teachStampArea.w*teachScale, teachStampArea.h*teachScale);
+      ctx.restore();
+    }
+  });
+}
+function teachSkipTotal() {
+  // User skips optional total area — save directly without totalArea
+  teachTotalArea = null;
+  document.getElementById('teachNext2Btn').style.display = 'none';
+  document.getElementById('teachSkipTotalBtn').style.display = 'none';
+  document.getElementById('teachSaveBtn').style.display = '';
+  document.getElementById('teachHint').textContent = 'ℹ️ Total value area skipped — value-match validation will be disabled for this vendor.';
+}
+function teachSave() {
+  const name = document.getElementById('customVendorName').value.trim();
+  if (!name) { alert('Please enter a vendor name.'); return; }
+  if (!teachLpoArea || !teachStampArea) { alert('Please mark both LPO number and stamp areas.'); return; }
+  const lpoRegexStr = document.getElementById('customLpoRegex').value.trim();
+  const totalHeader = document.getElementById('customTotalHeader').value.trim();
+  const id = 'custom_' + Date.now();
+  const vendor = {
+    id, name,
+    lpoArea: teachLpoArea,
+    stampArea: teachStampArea,
+    totalArea: teachTotalArea || null,   // ← optional Total PO Value area
+    totalHeader: totalHeader || null,    // ← optional column-header text for smart extraction
+    lpoRegex: lpoRegexStr
+  };
+  customVendors.push(vendor);
+  persistVendors();      // ← save to localStorage
+  addVendorButton(vendor); // ← add button to grid
+  renderCustomVendorList();
+  selectVendor(id);
+  teachReset();
+  const valMsg = (teachTotalArea || totalHeader) ? ' (with Total-Value validation)' : '';
+  log(`✓ Vendor "${name}" saved permanently${valMsg} — will be available on next visit`, 'lok');
+}
+function teachReset() {
+  teachStep = 0; teachLpoArea = null; teachStampArea = null; teachTotalArea = null; teachPdfData = null;
+  document.getElementById('teachFileName').textContent = 'No file selected';
+  document.getElementById('teachPdfIn').value = '';
+  document.getElementById('teachCanvasArea').style.display = 'none';
+  document.getElementById('teachNextBtn').style.display = 'none';
+  document.getElementById('teachNext2Btn').style.display = 'none';
+  document.getElementById('teachSkipTotalBtn').style.display = 'none';
+  document.getElementById('teachSaveBtn').style.display = 'none';
+  document.getElementById('customVendorName').value = '';
+  document.getElementById('customLpoRegex').value = '';
+  document.getElementById('customTotalHeader').value = '';
+}
+function renderCustomVendorList() {
+  const div = document.getElementById('customVendorList');
+  if (!customVendors.length) { div.innerHTML=''; return; }
+  div.innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;gap:6px">
+      <span>💾 Saved Vendors</span>
+      <span style="color:var(--green);font-size:9px">(stored in browser — available next visit)</span>
+    </div>`
+    + customVendors.map(cv => `
+    <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:6px;font-family:var(--mono);font-size:11px">
+      <span style="color:var(--green);font-size:16px">🏷</span>
+      <span style="flex:1;color:var(--text);font-weight:600">${cv.name}</span>
+      ${(cv.totalArea || cv.totalHeader) ? `<span style="color:#fb923c;background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3);font-size:10px;padding:2px 6px;border-radius:4px" title="Total PO Value validation enabled${cv.totalHeader ? ` — column: ${cv.totalHeader}` : ''}">💰 ${cv.totalHeader ? 'col:' + cv.totalHeader.slice(0,14) : 'value-check'}</span>` : ''}
+      ${cv.lpoRegex ? `<span style="color:var(--muted);font-size:10px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${cv.lpoRegex}">${cv.lpoRegex}</span>` : ''}
+      <button onclick="selectVendor('${cv.id}')" style="background:rgba(232,160,32,.12);border:1px solid rgba(232,160,32,.3);color:var(--accent);cursor:pointer;font-size:11px;padding:3px 10px;border-radius:5px;font-family:var(--sans);font-weight:700" title="Use this vendor">Select</button>
+      <button onclick="deleteCustomVendor('${cv.id}')" style="background:rgba(255,92,92,.1);border:1px solid rgba(255,92,92,.25);color:var(--accent2);cursor:pointer;font-size:11px;padding:3px 8px;border-radius:5px;font-family:var(--sans);font-weight:700" title="Delete">🗑</button>
+    </div>`).join('');
+}
+function deleteCustomVendor(id) {
+  const cv = customVendors.find(v => v.id === id);
+  if (!cv) return;
+  if (!confirm(`Delete vendor "${cv.name}"? This cannot be undone.`)) return;
+  customVendors = customVendors.filter(v => v.id !== id);
+  persistVendors();
+  const btn = document.getElementById('vbtn-' + id);
+  if (btn) btn.remove();
+  renderCustomVendorList();
+  if (activeVendor === id) selectVendor('unioncoop');
+  log(`Vendor "${cv.name}" deleted`, 'lw');
+}
+
+// ── Drag/drop & click ─────────────────────────────────────────────
+function setupDZ(dropId, inputId, cb) {
+  const z   = document.getElementById(dropId);
+  const inp = document.getElementById(inputId);
+  if (!z || !inp) return;
+  // Click anywhere in the drop zone opens file picker
+  z.addEventListener('click', e => { e.stopPropagation(); inp.click(); });
+  z.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); z.classList.add('over'); });
+  z.addEventListener('dragleave', e => { e.stopPropagation(); z.classList.remove('over'); });
+  z.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    z.classList.remove('over');
+    if (e.dataTransfer.files.length) cb(e.dataTransfer.files);
+  });
+  inp.addEventListener('change', e => { if (e.target.files.length) cb(e.target.files); });
+}
+// Load any previously saved custom vendors from localStorage
+loadSavedVendors();
+
+// Set up file drop zones after DOM is ready
+setupDZ('xlDrop',  'xlIn',  f => loadXl(f));
+setupDZ('pdfDrop', 'pdfIn', f => loadPdfs(f));
+setupDZ('teachPdfDrop', 'teachPdfIn2', f => handleTeachPdf(f));
+
+function loadXl(files) {
+  const f = [...files].find(f => /\.(xlsx|xls|csv)$/i.test(f.name));
+  if (!f) return alert('Please select an Excel or CSV file.');
+  xlFile = f;
+  renderXlList();
+  previewExcel();
+  check();
+}
+function loadPdfs(files) {
+  const ps = [...files].filter(f => /\.pdf$/i.test(f.name));
+  if (!ps.length) return alert('Please select PDF files.');
+  pdfFiles = [...pdfFiles, ...ps];
+  renderPdfPreviews();
+  check();
+}
+
+function renderXlList() {
+  document.getElementById('xlList').innerHTML = xlFile ? `
+    <div class="fi">
+      <span>📊</span>
+      <span class="fn2">${xlFile.name}</span>
+      <span class="fz">${(xlFile.size/1024).toFixed(1)}KB</span>
+      <button class="fx" onclick="removeXl()">✕</button>
+    </div>` : '';
+}
+function removeXl() {
+  xlFile=null;
+  document.getElementById('xlIn').value='';
+  document.getElementById('xlList').innerHTML='';
+  document.getElementById('prevTbl').innerHTML='';
+  document.getElementById('prevWrap').classList.remove('show');
+  check();
+}
+
+function check() {
+  const has = !!(xlFile || pdfFiles.length);
+  document.getElementById('procBtn').disabled = !(xlFile && pdfFiles.length);
+  document.getElementById('clearBtn').disabled = !has;
+}
+
+// ── PDF previews ──────────────────────────────────────────────────
+function renderPdfPreviews() {
+  const wrap = document.getElementById('pdfPreviews');
+  if (!pdfFiles.length) { wrap.classList.remove('show'); wrap.innerHTML=''; return; }
+  wrap.classList.add('show');
+  wrap.innerHTML = pdfFiles.map((f,i) => `
+    <div class="pdf-prev-item" id="ppitem-${i}">
+      <div class="pdf-thumb-wrap" onclick="previewPdfInModal(${i})" title="Preview">
+        <div class="thumb-loading" id="tl-${i}">⏳</div>
+        <canvas id="tc-${i}" style="display:none"></canvas>
+      </div>
+      <div class="pdf-prev-info">
+        <div class="pdf-prev-name" title="${f.name}">${f.name}</div>
+        <div class="pdf-prev-meta" id="tm-${i}">${(f.size/1024).toFixed(1)} KB · loading…</div>
+      </div>
+      <div class="pdf-prev-btns">
+        <button class="pdf-eye" onclick="previewPdfInModal(${i})">👁 Preview</button>
+        <button class="pdf-rm" onclick="rmPdf(${i})">✕</button>
+      </div>
+    </div>`).join('');
+  pdfFiles.forEach((f,i) => renderThumb(f,i));
+}
+
+async function renderThumb(file, i) {
+  try {
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    const page = await pdf.getPage(1);
+    const vp = page.getViewport({ scale: 0.3 });
+    const canvas = document.getElementById(`tc-${i}`);
+    const loading = document.getElementById(`tl-${i}`);
+    if (!canvas) return;
+    canvas.width = vp.width; canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    canvas.style.display = 'block';
+    if (loading) loading.style.display = 'none';
+    const m = document.getElementById(`tm-${i}`);
+    if (m) m.textContent = `${(file.size/1024).toFixed(1)} KB · ${pdf.numPages} page${pdf.numPages>1?'s':''}`;
+  } catch {
+    const l = document.getElementById(`tl-${i}`);
+    if (l) l.textContent = '📄';
+  }
+}
+
+function rmPdf(i) { pdfFiles.splice(i,1); renderPdfPreviews(); check(); }
+
+async function previewPdfInModal(i) {
+  const f = pdfFiles[i];
+  if (!f) return;
+  if (modalBlobUrl) { URL.revokeObjectURL(modalBlobUrl); modalBlobUrl=null; }
+  const blob = new Blob([new Uint8Array(await f.arrayBuffer())], {type:'application/pdf'});
+  modalBlobUrl = URL.createObjectURL(blob);
+  modalResultIdx = -1;
+  document.getElementById('modalTitle').textContent = f.name;
+  document.getElementById('modalBadges').innerHTML = '<span class="rl">Uploaded · Unstamped</span>';
+  document.getElementById('modalInfo').textContent = `${(f.size/1024).toFixed(1)} KB · preview only`;
+  document.getElementById('modalDlBtn').style.display = 'none';
+  document.getElementById('modalFrame').src = modalBlobUrl;
+  document.getElementById('pdfModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+// ── Excel preview ─────────────────────────────────────────────────
+function previewExcel() {
+  if (!xlFile) return;
+  const r = new FileReader();
+  r.onload = e => {
+    const wb = XLSX.read(e.target.result,{type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    const li   = ci(document.getElementById('lpoCol').value||'A');
+    const si   = ci(document.getElementById('soCol').value||'B');
+    const tcRaw = (document.getElementById('totalCol').value||'').trim();
+    const rcRaw = (document.getElementById('reasonCol').value||'').trim();
+    const ti = tcRaw ? ci(tcRaw) : -1;
+    const ri = rcRaw ? ci(rcRaw) : -1;
+    const skip = parseInt(document.getElementById('skipRows').value)||1;
+
+    // Build header row dynamically
+    let header = `<thead><tr><th>BOF / PO No.</th><th>Sales Order</th>`;
+    if (ti >= 0) header += `<th>Total Value</th>`;
+    if (ri >= 0) header += `<th>Reason / Region</th>`;
+    header += `</tr></thead><tbody>`;
+
+    let html = header;
+    for (let row=skip; row<Math.min(data.length,skip+6); row++) {
+      html += `<tr>
+        <td>${data[row][li]||''}</td>
+        <td class="sc">${data[row][si]||''}</td>`;
+      if (ti >= 0) html += `<td>${data[row][ti]||''}</td>`;
+      if (ri >= 0) html += `<td>${data[row][ri]||''}</td>`;
+      html += `</tr>`;
+    }
+    html += '</tbody>';
+    document.getElementById('prevTbl').innerHTML = html;
+    document.getElementById('prevWrap').classList.add('show');
+  };
+  r.readAsArrayBuffer(xlFile);
+}
+['lpoCol','soCol','totalCol','reasonCol','skipRows'].forEach(id => document.getElementById(id).addEventListener('change', previewExcel));
+
+function ci(letter) {
+  letter=(letter||'A').toUpperCase().trim();
+  let n=0; for(let i=0;i<letter.length;i++) n=n*26+(letter.charCodeAt(i)-64);
+  return n-1;
+}
+
+// ── Logging ───────────────────────────────────────────────────────
+function log(msg, cls='li') {
+  const b=document.getElementById('logBox');
+  b.classList.add('show');
+  const d=document.createElement('div');
+  d.className=cls;
+  d.textContent=`[${new Date().toLocaleTimeString('en-US',{hour12:false})}] ${msg}`;
+  b.appendChild(d); b.scrollTop=b.scrollHeight;
+}
+function prog(p) { document.getElementById('pbar').classList.add('show'); document.getElementById('pfill').style.width=p+'%'; }
+
+// ── Parse Excel ───────────────────────────────────────────────────
+function parseExcel() {
+  return new Promise((res,rej) => {
+    const r=new FileReader();
+    r.onload=e=>{
+      try {
+        const wb=XLSX.read(e.target.result,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+        const li  = ci(document.getElementById('lpoCol').value||'A');
+        const si  = ci(document.getElementById('soCol').value||'B');
+        const tcRaw = (document.getElementById('totalCol').value||'').trim();
+        const rcRaw = (document.getElementById('reasonCol').value||'').trim();
+        const ti = tcRaw ? ci(tcRaw) : -1;
+        const ri = rcRaw ? ci(rcRaw) : -1;
+        const skip= parseInt(document.getElementById('skipRows').value)||1;
+        const map={};
+        for(let row=skip;row<data.length;row++){
+          const bof = String(data[row][li]||'').trim();
+          const so  = String(data[row][si]||'').trim();
+          if(bof) {
+            const entry = { so };
+            if (ti >= 0) {
+              const raw = data[row][ti];
+              const parsed = parseNumeric(raw);
+              entry.total = parsed;      // number or null
+              entry.totalRaw = String(raw||'').trim();
+            }
+            if (ri >= 0) {
+              entry.reason = String(data[row][ri]||'').trim();
+            }
+            map[bof] = entry;
+          }
+        }
+        const hasTotal = ti >= 0 ? ' · Total column: ' + tcRaw.toUpperCase() : '';
+        const hasReason= ri >= 0 ? ' · Reason column: ' + rcRaw.toUpperCase() : '';
+        log(`Excel: ${Object.keys(map).length} BOF entries loaded${hasTotal}${hasReason}`,'lok');
+        res(map);
+      } catch(err){rej(err);}
+    };
+    r.readAsArrayBuffer(xlFile);
+  });
+}
+
+// ── Robust numeric parse ──
+// Accepts "1,234.50", "AED 1234.50", "1234.5", "(1,234.5)" (treated negative), etc.
+function parseNumeric(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return v;
+  let s = String(v).trim();
+  if (!s) return null;
+  const negParens = /^\(.*\)$/.test(s);
+  // strip currency symbols, letters, commas, parens, spaces — keep digits, dot, minus
+  s = s.replace(/[^\d.\-]/g,'');
+  if (!s || s === '-' || s === '.') return null;
+  const n = parseFloat(s);
+  if (isNaN(n)) return null;
+  return negParens ? -Math.abs(n) : n;
+}
+
+// ── Sanitize text for use in filename ──
+function sanitizeFilenamePart(s) {
+  if (!s) return '';
+  // Remove illegal filesystem characters, collapse whitespace
+  return String(s).replace(/[<>:"/\\|?*\x00-\x1F]/g,'').replace(/\s+/g,' ').trim();
+}
+
+// ── Smart column-header total extraction ──
+// Given an array of page objects {items, full, pageNum} and a header pattern
+// (string or RegExp), find that header cell in the PDF, then read the number
+// directly below it in the lowest (summary) row. This is how Carrefour (and
+// similar table-layout LPOs) put the grand total — in a dedicated column.
+// Scans pages in reverse so multi-page LPOs hit the last-page summary first.
+// Returns { total: number, raw: string, pageIdx: 1-based } or null.
+function extractTotalByColumnHeader(pages, headerPattern) {
+  // Build a matcher: accept either string (whole-or-prefix match, normalized)
+  // or a RegExp (applied to the normalized-uppercase token text).
+  const norm = s => String(s).replace(/\s+/g,' ').trim().toUpperCase();
+  const matchHeader = (s) => {
+    const n = norm(s);
+    if (!n) return false;
+    if (headerPattern instanceof RegExp) return headerPattern.test(n);
+    const p = norm(headerPattern);
+    if (!p) return false;
+    return n === p || n.startsWith(p);
+  };
+
+  for (let pi = pages.length - 1; pi >= 0; pi--) {
+    const { items } = pages[pi];
+    if (!items || !items.length) continue;
+
+    let headerX = null, headerW = 60, headerY = null;
+
+    // Pass 1: single-token header match
+    for (const it of items) {
+      if (matchHeader(it.str)) {
+        headerX = it.x;
+        headerW = Math.max(it.width || 60, 60);
+        headerY = it.y;
+        log(`  Found "${it.str}" header at x=${it.x.toFixed(1)}, y=${it.y.toFixed(1)} (page ${pi+1})`, 'li');
+        break;
+      }
+    }
+    // Pass 2: header split across two adjacent items (e.g. "TOTAL B." + "TAX")
+    if (headerX === null) {
+      for (let i = 0; i < items.length - 1; i++) {
+        const combined = items[i].str + ' ' + items[i+1].str;
+        if (matchHeader(combined)) {
+          headerX = items[i].x;
+          headerW = Math.max((items[i+1].x + (items[i+1].width||0)) - items[i].x, 60);
+          headerY = items[i].y;
+          log(`  Found paired header "${norm(combined)}" at x=${items[i].x.toFixed(1)} (page ${pi+1})`, 'li');
+          break;
+        }
+      }
+    }
+
+    if (headerX !== null) {
+      // Find all numeric items inside the column, strictly BELOW the header
+      const tol = 20;
+      const xMin = headerX - tol, xMax = headerX + headerW + tol;
+      const colNums = items
+        .filter(it => {
+          if (it.y >= headerY - 2) return false;             // below header only
+          if (it.x < xMin || it.x > xMax) return false;       // inside column
+          const clean = it.str.replace(/,/g,'').trim();
+          if (!/^\d[\d]*\.?\d*$/.test(clean)) return false;   // numeric only
+          const n = parseFloat(clean);
+          return !isNaN(n) && n >= 0;
+        })
+        .map(it => ({ ...it, num: parseFloat(it.str.replace(/,/g,'')) }));
+
+      if (colNums.length > 0) {
+        // Grand total = lowest Y (bottom-most row in the column = summary)
+        colNums.sort((a, b) => a.y - b.y);
+        const gt = colNums[0];
+        log(`  Column grand total: "${gt.str}" at y=${gt.y.toFixed(1)}`, 'lok');
+        return { total: gt.num, raw: gt.str, pageIdx: pi + 1 };
+      }
+    }
+
+    // Fallback on THIS page: find the lowest numeric-only row and take its
+    // rightmost number (inside the right 55% of the page)
+    const pageW = Math.max(...items.map(it => (it.x || 0) + (it.width || 0)), 600);
+    const rowMap = {};
+    for (const it of items) {
+      const key = Math.round(it.y / 3) * 3;
+      (rowMap[key] = rowMap[key] || []).push(it);
+    }
+    const numericRows = Object.entries(rowMap)
+      .filter(([,row]) => row.some(it => /\d/.test(it.str)) && !row.some(it => /[A-Za-z]/.test(it.str)))
+      .map(([y]) => parseFloat(y))
+      .sort((a,b) => a - b);
+    if (numericRows.length) {
+      const rowY = numericRows[0];
+      const nums = items
+        .filter(it => Math.abs(it.y - rowY) < 5)
+        .filter(it => {
+          const clean = it.str.replace(/,/g,'').trim();
+          if (!/^\d[\d]*\.?\d*$/.test(clean)) return false;
+          const n = parseFloat(clean);
+          return !isNaN(n) && n >= 0;
+        })
+        .map(it => ({ ...it, num: parseFloat(it.str.replace(/,/g,'')) }))
+        .filter(it => it.x > pageW * 0.40);
+      if (nums.length) {
+        nums.sort((a,b) => b.x - a.x);
+        const gt = nums[0];
+        log(`  Fallback grand total (rightmost summary): "${gt.str}" at x=${gt.x.toFixed(1)} (page ${pi+1})`, 'lok');
+        return { total: gt.num, raw: gt.str, pageIdx: pi + 1 };
+      }
+    }
+  }
+
+  // Ultimate fallback: last 2-decimal number anywhere in the document
+  for (let pi = pages.length - 1; pi >= 0; pi--) {
+    const full = pages[pi]?.full || '';
+    const matches = [...full.matchAll(/\b(\d{2,}[,\d]*\.\d{2,3})\b/g)];
+    if (matches.length) {
+      const last = matches[matches.length - 1];
+      const n = parseFloat(last[1].replace(/,/g,''));
+      if (!isNaN(n) && n > 0) {
+        log(`  Ultimate fallback total: "${last[1]}" on page ${pi+1}`, 'lok');
+        return { total: n, raw: last[1], pageIdx: pi + 1 };
+      }
+    }
+  }
+
+  return null;
+}
+
+// ── Analyze PDF — supports Union Coop, Delivery Hero, Carrefour, Custom ──
+async function analyzePdf(buffer) {
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const allPages = [];
+
+  for (let p=1; p<=pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc   = await page.getTextContent();
+    const items = tc.items.map(it => ({
+      str:      it.str.trim(),
+      x:        it.transform[4],
+      y:        it.transform[5],
+      fontSize: Math.abs(it.transform[0]) || Math.abs(it.transform[3]) || 10,
+      width:    it.width || 0,
+    }));
+    const full = items.map(it=>it.str).join(' ');
+    allPages.push({ full, items, pageNum: p });
+  }
+
+  const fullText = allPages.map(p=>p.full).join(' ');
+
+  // ════════════════════════════════════════════════
+  // DETECT FORMAT
+  // ════════════════════════════════════════════════
+  const isDeliveryHero  = /Purchase\s+Order\s*:/i.test(fullText) || /PO\d{6,}/i.test(fullText);
+  const isUnionCoop     = /BRANCH\s+ORDER\s+FORM/i.test(fullText) || /BOF\s*No/i.test(fullText);
+
+  let bofNum = null;
+  let bofFull = null;
+  let bofHeadingItem = null;
+  let docType = 'unknown';
+
+  // ── Check if a specific vendor is selected — enforce it ──
+  // If user selected a vendor, only process that format
+  const forced = activeVendor; // global
+
+  // ── Custom vendor (taught by sample) ──
+  if (forced && forced.startsWith('custom_')) {
+    const cv = customVendors.find(v => v.id === forced);
+    if (cv) {
+      docType = cv.name;
+      log(`  Vendor: ${cv.name} (custom)`, 'li');
+      // Extract LPO number using regex or from marked area
+      if (cv.lpoRegex) {
+        try {
+          const rx = new RegExp(cv.lpoRegex, 'i');
+          const m = fullText.match(rx);
+          if (m) { bofNum = (m[1]||m[0]).trim(); bofFull = bofNum; log(`  LPO found (regex): "${bofNum}"`, 'lok'); }
+        } catch(e) { log(`  Regex error: ${e.message}`, 'lw'); }
+      }
+      if (!bofNum) {
+        // Positional: find text items within the marked LPO area
+        const la = cv.lpoArea;
+        for (const { items, pageNum } of allPages) {
+          if (pageNum !== 1) continue;
+          const page0 = allPages[0];
+          const scaleX = la.pageW > 0 ? 1 : 1; // already in PDF coords
+          const hits = items.filter(it =>
+            it.x >= la.x && it.x <= la.x + la.w &&
+            it.y >= (la.pageH - la.y - la.h) && it.y <= (la.pageH - la.y)
+          ).map(it => it.str).join(' ').trim();
+          if (hits) {
+            // Extract the first long numeric sequence
+            const nm = hits.match(/(\d{6,})/);
+            bofNum = nm ? nm[1] : hits;
+            bofFull = bofNum;
+            log(`  LPO from area: "${bofNum}"`, 'lok');
+            break;
+          }
+        }
+      }
+      // Use stamp area as heading item
+      const sa = cv.stampArea;
+      bofHeadingItem = { x: sa.x, y: sa.pageH - sa.y - sa.h, width: sa.w, fontSize: 12, _customStamp: true, _stampArea: sa };
+
+      // ── Extract Total PO Value ──
+      // Priority order:
+      //   1. If the vendor has a "Total Column Header" configured, try the
+      //      smart column-based extractor first (works for table layouts
+      //      and handles multi-page LPOs cleanly).
+      //   2. Otherwise / on failure, use the taught total-area rectangle
+      //      (scanning all pages, preferring the last page).
+      //   3. Finally, fall back to label-regex sweep across full text.
+      let pdfTotal = null, pdfTotalRaw = null, pdfTotalPage = null;
+
+      if (cv.totalHeader) {
+        const res = extractTotalByColumnHeader(allPages, cv.totalHeader);
+        if (res) {
+          pdfTotal = res.total;
+          pdfTotalRaw = res.raw;
+          pdfTotalPage = res.pageIdx;
+          log(`  Total via column header "${cv.totalHeader}" → ${pdfTotal} (page ${pdfTotalPage})`, 'lok');
+        } else {
+          log(`  ⚠ Column header "${cv.totalHeader}" not found — falling back to taught box`, 'lw');
+        }
+      }
+
+      if (pdfTotal === null && cv.totalArea) {
+        const ta = cv.totalArea;
+
+        // Helper: try to extract a number from items that fall inside the
+        // taught rectangle on a given page. Uses that page's OWN height for
+        // the y-coordinate flip (handles minor page-size differences).
+        const tryExtractFromPage = (pageObj) => {
+          const pgHeight = pageObj.pageH || ta.pageH; // fallback
+          const yMin = pgHeight - ta.y - ta.h;
+          const yMax = pgHeight - ta.y;
+          const hits = pageObj.items.filter(it =>
+            it.x >= ta.x - 2 && it.x <= ta.x + ta.w + 2 &&
+            it.y >= yMin - 2 && it.y <= yMax + 2
+          ).map(it => it.str).join(' ').trim();
+          if (!hits) return null;
+          // Grab the LAST number-looking token (totals usually appear after
+          // currency labels or "Total:" prefixes in the same region)
+          let parsed = null;
+          const matches = hits.match(/[-(]?\s*[\d,]*\.?\d+\)?/g);
+          if (matches && matches.length) {
+            for (let k = matches.length - 1; k >= 0; k--) {
+              const n = parseNumeric(matches[k]);
+              if (n !== null) { parsed = n; break; }
+            }
+          }
+          if (parsed === null) parsed = parseNumeric(hits);
+          return { raw: hits, value: parsed };
+        };
+
+        // Annotate each page with its own page height (from the first text
+        // item's transform context isn't reliable — use pdf.js viewport).
+        // Since we already built allPages earlier without pageH, re-read
+        // dimensions here from the PDF object for accuracy.
+        // NOTE: pdfjs pages are 1-indexed.
+        for (let p = pdf.numPages; p >= 1; p--) {
+          const pageObj = allPages[p - 1];
+          if (!pageObj) continue;
+          // Attach page height if not already present
+          if (!pageObj.pageH) {
+            try {
+              const pg = await pdf.getPage(p);
+              const vp = pg.getViewport({ scale: 1 });
+              pageObj.pageH = vp.height;
+              pageObj.pageW = vp.width;
+            } catch(e) { /* fall back to taught pageH */ }
+          }
+          const out = tryExtractFromPage(pageObj);
+          if (out && out.value !== null && !isNaN(out.value)) {
+            pdfTotal = out.value;
+            pdfTotalRaw = out.raw;
+            pdfTotalPage = p;
+            log(`  Total from area (page ${p}/${pdf.numPages}): "${pdfTotalRaw}" → ${pdfTotal}`, 'lok');
+            break;
+          }
+        }
+
+        // ── Fallback: regex sweep across full document text ──
+        // If the taught-area approach found nothing on any page (e.g. the
+        // total sits slightly outside the taught box on overflow pages),
+        // look for common total labels like "Grand Total", "Net Total",
+        // "Total Amount" etc. in the entire document.
+        if (pdfTotal === null) {
+          const totalPatterns = [
+            /(?:Grand\s+Total|Net\s+Total|Total\s+Amount|PO\s+Total|Order\s+Total|Invoice\s+Total|Total\s+Value|Total\s+Net|Net\s+Amount)[\s:.\-]*(?:AED|USD|EUR|GBP|SAR|QAR|OMR|KWD|BHD|INR|\$|€|£)?\s*([-(]?[\d,]+\.?\d*\)?)/i,
+            /\bTotal\b\s*[:.\-]?\s*(?:AED|USD|EUR|GBP|SAR|QAR|OMR|KWD|BHD|INR|\$|€|£)?\s*([-(]?[\d,]+\.?\d{2}\)?)/i,
+          ];
+          for (const rx of totalPatterns) {
+            // Search last page first (totals are usually at the end)
+            for (let p = pdf.numPages; p >= 1; p--) {
+              const pageText = allPages[p - 1]?.full || '';
+              const m = pageText.match(rx);
+              if (m && m[1]) {
+                const n = parseNumeric(m[1]);
+                if (n !== null) {
+                  pdfTotal = n;
+                  pdfTotalRaw = m[0].trim();
+                  pdfTotalPage = p;
+                  log(`  Total via text-label fallback (page ${p}): "${pdfTotalRaw}" → ${pdfTotal}`, 'lok');
+                  break;
+                }
+              }
+            }
+            if (pdfTotal !== null) break;
+          }
+        }
+
+        if (pdfTotal === null) {
+          log(`  ⚠ Total PO Value not found in marked area across ${pdf.numPages} page(s)`, 'lw');
+        }
+      }
+
+      return { bofNum, bofFull, bofHeadingItem, docType, allPages, pdfTotal, pdfTotalRaw, pdfTotalPage };
+    }
+  }
+
+  // ════════════════════════════════════════════════
+  // CARREFOUR FORMAT
+  // "ORDER" label with number value, and "TOTAL B. TAX" column for grand total.
+  // Stamp zone sits between TERMS/SPECIAL CONDITIONS and the line-items table.
+  // ════════════════════════════════════════════════
+  if (forced === 'carrefour') {
+    docType = 'Carrefour';
+    log(`  Vendor: Carrefour (built-in)`, 'li');
+
+    // ── Find the ORDER number (configured label, default "ORDER") ──
+    const orderLabel = 'ORDER';
+    for (const { full, items } of allPages) {
+      // Method A: find an item that IS or STARTS WITH "ORDER", grab value
+      for (let i = 0; i < items.length; i++) {
+        const t = items[i].str.toUpperCase().trim();
+        if (t === orderLabel || t.startsWith(orderLabel + ' ') || t.startsWith(orderLabel + ':')) {
+          // Value may be trailing part of same item
+          const rest = items[i].str.slice(orderLabel.length).replace(/^[:\s]+/,'').trim();
+          if (rest && /\d{4,}/.test(rest)) {
+            bofNum = rest.match(/[A-Z0-9][A-Z0-9\-]{3,25}/i)?.[0] || rest;
+            bofFull = bofNum;
+            log(`  ORDER found inline: "${bofNum}"`, 'lok');
+            break;
+          }
+          // Value in next few items
+          for (let j = i+1; j < Math.min(i+6, items.length); j++) {
+            const cand = items[j].str.replace(/^[:\s]+/,'').trim();
+            if (cand && /[A-Z0-9\-]{4,}/.test(cand) && /\d/.test(cand)) {
+              bofNum = cand;
+              bofFull = cand;
+              log(`  ORDER found next token: "${bofNum}"`, 'lok');
+              break;
+            }
+          }
+          if (bofNum) break;
+        }
+      }
+      if (bofNum) break;
+    }
+    // Method B: regex fallback
+    if (!bofNum) {
+      const m = fullText.match(/ORDER\s*[:\s]+([A-Z0-9][A-Z0-9\-]{4,25})/i);
+      if (m) { bofNum = m[1]; bofFull = m[1]; log(`  ORDER (regex): "${bofNum}"`, 'lok'); }
+    }
+
+    // ── Find zone anchors for stamp placement ──
+    // TOP anchor: TERMS / SPECIAL CONDITIONS (lowest y wins = furthest down)
+    let termsItem = null;
+    for (const { items } of allPages) {
+      for (const it of items) {
+        const s = it.str.toUpperCase().trim();
+        if (s === 'TERMS:' || s === 'TERMS' || s.startsWith('SPECIAL COND') || s === 'SLIM4 LPO') {
+          if (!termsItem || it.y < termsItem.y) termsItem = it;
+        }
+      }
+    }
+    // BOTTOM anchor: table header row (BAR CODE / QTY / SUPPLIER REF etc.)
+    let tableHeaderItem = null;
+    const TOP_KEYWORDS = ['BAR CODE','BARCODE','QTY','SUPPLIER REF','ITEM DESCRIPTION','FAM.','P.PRI'];
+    for (const { items } of allPages) {
+      for (const it of items) {
+        const s = it.str.toUpperCase().trim();
+        if (TOP_KEYWORDS.some(k => s.includes(k))) {
+          if (termsItem && it.y >= termsItem.y) continue;
+          if (!tableHeaderItem || it.y > tableHeaderItem.y) tableHeaderItem = it;
+        }
+      }
+    }
+    if (termsItem)       log(`  Zone top anchor at y=${termsItem.y.toFixed(1)} → "${termsItem.str.slice(0,40)}"`, 'li');
+    if (tableHeaderItem) log(`  Zone bottom anchor at y=${tableHeaderItem.y.toFixed(1)} → "${tableHeaderItem.str.slice(0,40)}"`, 'li');
+
+    // Pack stamp anchor with zone info (consumed by stampSO's Carrefour branch)
+    bofHeadingItem = {
+      _carrefourStamp: true,
+      termsItem, tableHeaderItem,
+      x: 0, y: 0, width: 0, fontSize: 14,
+    };
+
+    // ── Extract Total PO Value from "TOTAL B. TAX" column ──
+    let pdfTotal = null, pdfTotalRaw = null, pdfTotalPage = null;
+    const headerRx = /^TOTAL\s*[AB]\.?\s*TAX$|^TOTALB\.?TAX$|^TOTAL\s+[AB]\b/;
+    const totalRes = extractTotalByColumnHeader(allPages, headerRx);
+    if (totalRes) {
+      pdfTotal = totalRes.total;
+      pdfTotalRaw = totalRes.raw;
+      pdfTotalPage = totalRes.pageIdx;
+    } else {
+      log(`  ⚠ TOTAL B. TAX column not found — total validation will be skipped`, 'lw');
+    }
+
+    if (!bofNum) log(`  ⚠ ORDER number not found`, 'lw');
+    return { bofNum, bofFull, bofHeadingItem, docType, allPages, pdfTotal, pdfTotalRaw, pdfTotalPage };
+  }
+
+  // ════════════════════════════════════════════════
+  // DELIVERY HERO FORMAT
+  // "Purchase Order: PO4001840" as heading
+  // ════════════════════════════════════════════════
+  if (isDeliveryHero && !isUnionCoop) {
+    docType = 'DeliveryHero';
+    log(`  Format detected: Delivery Hero PO`, 'li');
+
+    // Method A: find item containing "Purchase Order:" then grab PO number from same or next item
+    for (const { items } of allPages) {
+      for (let i=0; i<items.length; i++) {
+        const s = items[i].str;
+        // Case 1: "Purchase Order: PO4001840" all in one item
+        const inline = s.match(/Purchase\s+Order\s*:\s*(PO\d{4,})/i);
+        if (inline) {
+          bofNum = inline[1];
+          bofFull = inline[1];
+          bofHeadingItem = items[i];
+          log(`  PO found inline: "${bofNum}"`, 'lok');
+          break;
+        }
+        // Case 2: "Purchase Order:" label, next item has "PO4001840"
+        if (/Purchase\s+Order\s*:/i.test(s)) {
+          for (let j=i+1; j<Math.min(i+5,items.length); j++) {
+            const m = items[j].str.match(/^(PO\d{4,})$/i);
+            if (m) {
+              bofNum = m[1];
+              bofFull = m[1];
+              // Use the label item as anchor for stamp — stamp goes after it
+              bofHeadingItem = items[i];
+              log(`  PO found next token: "${bofNum}"`, 'lok');
+              break;
+            }
+          }
+        }
+        if (bofNum) break;
+      }
+      if (bofNum) break;
+    }
+
+    // Method B: regex on full text
+    if (!bofNum) {
+      const m = fullText.match(/Purchase\s+Order\s*:\s*(PO\d{4,})/i);
+      if (m) { bofNum=m[1]; bofFull=m[1]; log(`  PO regex: "${bofNum}"`, 'lok'); }
+    }
+    // Method C: just any PO number pattern
+    if (!bofNum) {
+      const m = fullText.match(/(PO\d{4,})/i);
+      if (m) { bofNum=m[1]; bofFull=m[1]; log(`  PO fallback: "${bofNum}"`, 'lok'); }
+    }
+
+    // Find "Store Information:" item — stamp goes JUST ABOVE this text
+    let storeInfoItem = null;
+    for (const { items } of allPages) {
+      for (const it of items) {
+        if (/store\s+information/i.test(it.str)) {
+          storeInfoItem = it;
+          log(`  "Store Information:" at x=${it.x.toFixed(1)}, y=${it.y.toFixed(1)}`, 'li');
+          break;
+        }
+      }
+      if (storeInfoItem) break;
+    }
+    // Use storeInfoItem as the stamp anchor for DeliveryHero
+    if (storeInfoItem) bofHeadingItem = { ...storeInfoItem, _dhStamp: true };
+
+    // Fallback: find heading from PO number if storeInfoItem not found
+    if (!storeInfoItem && bofNum && !bofHeadingItem) {
+      for (const { items } of allPages) {
+        const hit = items.find(it => it.str.includes(bofNum) || it.str.match(/Purchase\s+Order/i));
+        if (hit) { bofHeadingItem = hit; break; }
+      }
+    }
+  }
+
+
+
+  // ════════════════════════════════════════════════
+  // UNION COOP FORMAT
+  // "BOF No." label then "BP 17177254"
+  // ════════════════════════════════════════════════
+  if (!bofNum && forced !== 'deliveryhero' && forced !== 'carrefour') {
+    docType = 'UnionCoop';
+    log(`  Format detected: Union Coop BOF`, 'li');
+
+    for (const { full, items } of allPages) {
+      // Method A: find "BOF No." label then grab next items
+      for (let i=0; i<items.length; i++) {
+        const t = items[i].str.toUpperCase().replace(/\s/g,'');
+        if (t.includes('BOFNO')) {
+          for (let j=i+1; j<Math.min(i+6,items.length); j++) {
+            const cand = items[j].str.trim();
+            const m = cand.match(/^(BP\s*\d{6,}|\d{6,})$/i);
+            if (m) {
+              bofFull = cand;
+              bofNum  = cand.replace(/^BP\s*/i,'').trim();
+              log(`  BOF No. found: "${bofFull}" → key: "${bofNum}"`, 'lok');
+              break;
+            }
+          }
+          if (bofNum) break;
+        }
+      }
+      if (bofNum) break;
+
+      // Method B: regex
+      const m1 = full.match(/BOF\s*No\.?\s*[:\s]*BP\s*(\d{6,})/i);
+      const m2 = full.match(/BP\s+(\d{7,})/i);
+      if (m1) { bofNum=m1[1]; bofFull=`BP ${m1[1]}`; log(`  BOF regex A: "${bofFull}"`, 'lok'); break; }
+      if (m2) { bofNum=m2[1]; bofFull=`BP ${m2[1]}`; log(`  BOF regex B: "${bofFull}"`, 'lok'); break; }
+    }
+
+    // Find "BRANCH ORDER FORM" heading for stamp placement
+    for (const { items } of allPages) {
+      for (const it of items) {
+        if (it.str.toUpperCase().includes('BRANCH ORDER FORM')) {
+          bofHeadingItem = it;
+          log(`  "BRANCH ORDER FORM" at x=${it.x.toFixed(1)}, y=${it.y.toFixed(1)}`, 'li');
+          break;
+        }
+      }
+      if (bofHeadingItem) break;
+    }
+  }
+
+  if (!bofNum) log(`  ⚠ LPO/BOF/PO/Order number not found`, 'lw');
+
+  return { bofNum, bofFull, bofHeadingItem, docType, allPages };
+}
+
+// ── Stamp SO number next to "BRANCH ORDER FORM" heading ──────────
+async function stampSO(buffer, soNumber, bofHeadingItem, forceFontSize=0) {
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+  const doc  = await PDFDocument.load(buffer);
+  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+
+  // Stamp FIRST PAGE ONLY
+  const page = doc.getPages()[0];
+  const { width, height } = page.getSize();
+
+  // Carrefour uses a labelled stamp ("Sales Order: X"); all other vendors
+  // stamp just the SO number by itself. We decide the label string based on
+  // which branch we enter below.
+  let label = `${soNumber}`;
+  let fs, x, y;
+
+  if (bofHeadingItem && bofHeadingItem._customStamp) {
+    // ── Custom vendor: stamp at the taught position ──
+    fs = forceFontSize > 0 ? forceFontSize : 12;
+    const sa = bofHeadingItem._stampArea;
+    x = sa.x + 4;
+    y = sa.pageH - sa.y - sa.h/2 - fs/2;
+    log(`  Stamp (Custom): "${label}" at x=${x.toFixed(1)}, y=${y.toFixed(1)}, fs=${fs}pt`, 'li');
+  } else if (bofHeadingItem && bofHeadingItem._carrefourStamp) {
+    // ── Carrefour: "Sales Order: X" centered in the blank zone ──
+    // Zone sits between TERMS/SPECIAL CONDITIONS (top) and the line-items
+    // table header (bottom). Font size auto-scales to zone height.
+    label = `Sales Order: ${soNumber}`;
+    const termsItem       = bofHeadingItem.termsItem;
+    const tableHeaderItem = bofHeadingItem.tableHeaderItem;
+    const zoneTop    = termsItem       ? termsItem.y - 4       : height * 0.55;
+    const zoneBottom = tableHeaderItem ? tableHeaderItem.y + 4 : zoneTop - 80;
+    const zoneHeight = Math.abs(zoneTop - zoneBottom);
+    const autoFs = Math.min(Math.max(Math.floor(zoneHeight * 0.50), 14), 40);
+    fs = forceFontSize > 0 ? forceFontSize : autoFs;
+    const tw = font.widthOfTextAtSize(label, fs);
+    x = (width - tw) / 2;
+    x = Math.max(10, Math.min(x, width - tw - 10));
+    y = zoneBottom + (zoneHeight - fs) / 2;
+    y = Math.max(10, y);
+    log(`  Stamp (C4): "${label}" zone top=${zoneTop.toFixed(1)}, bottom=${zoneBottom.toFixed(1)}, fs=${fs}pt`, 'li');
+  } else if (bofHeadingItem && bofHeadingItem._dhStamp) {
+    // ── Delivery Hero: stamp JUST ABOVE "Store Information:" ──
+    fs = forceFontSize > 0 ? forceFontSize : 12;
+    const lineGap = fs + 6;
+    x = bofHeadingItem.x;
+    y = bofHeadingItem.y + lineGap;
+    if (y > height - 10) y = bofHeadingItem.y - lineGap;
+    log(`  Stamp (DH): "${label}" at x=${x.toFixed(1)}, y=${y.toFixed(1)}, fs=${fs}pt`, 'li');
+
+  } else if (bofHeadingItem) {
+    // ── Union Coop: stamp to the RIGHT of "BRANCH ORDER FORM" ──
+    fs = forceFontSize > 0 ? forceFontSize : (Math.round(bofHeadingItem.fontSize) || 14);
+    const tw = font.widthOfTextAtSize(label, fs);
+    x = bofHeadingItem.x + bofHeadingItem.width + 14;
+    y = bofHeadingItem.y;
+    if (x + tw > width - 10) { x = bofHeadingItem.x; y = bofHeadingItem.y - fs - 4; }
+    log(`  Stamp (UC): "${label}" at x=${x.toFixed(1)}, y=${y.toFixed(1)}, fs=${fs}pt`, 'li');
+  } else {
+    // Fallback: top-right corner
+    fs = forceFontSize > 0 ? forceFontSize : 14;
+    const tw = font.widthOfTextAtSize(label, fs);
+    x = width - tw - 20;
+    y = height - fs - 20;
+    log(`  Stamp fallback: top-right`, 'lw');
+  }
+
+  // Plain bold black — no box, no background
+  page.drawText(label, { x, y, size: fs, font, color: rgb(0, 0, 0) });
+
+  return await doc.save();
+}
+
+// ── Main run ──────────────────────────────────────────────────────
+async function run() {
+  const btn = document.getElementById('procBtn');
+  btn.disabled=true; btn.textContent='⏳ Processing…';
+  document.getElementById('logBox').innerHTML='';
+  document.getElementById('resArea').classList.remove('show');
+
+  results=[];
+
+  try {
+    log(`── Starting [${(VENDOR_INFO[activeVendor]?.label || customVendors.find(v=>v.id===activeVendor)?.name || activeVendor).toUpperCase()}] ──`,'lh'); prog(5);
+    log(`Reading: ${xlFile.name}`,'li');
+    const lpoMap = await parseExcel();
+    prog(15);
+
+    const step = 80/pdfFiles.length;
+    let stamped=0, noMatch=0;
+
+    for (let i=0; i<pdfFiles.length; i++) {
+      const f = pdfFiles[i];
+      log(`\n── PDF ${i+1}/${pdfFiles.length}: ${f.name}`,'lh');
+
+      const buf   = await f.arrayBuffer();
+      const bufU8 = new Uint8Array(buf);
+
+      let analysis;
+      try { analysis = await analyzePdf(buf.slice(0)); }
+      catch(ex) {
+        log(`  Error: ${ex.message}`,'le');
+        results.push({name:f.name,buf:bufU8,origFile:f,bofNum:null,soNum:null,ok:false,failReason:'Parse error'});
+        noMatch++; prog(15+(i+1)*step); continue;
+      }
+
+      const { bofNum, bofFull, bofHeadingItem, docType, pdfTotal, pdfTotalRaw } = analysis;
+
+      if (!bofNum) {
+        log(`  ⚠ LPO/BOF/PO number not found`,'lw');
+        results.push({name:f.name,buf:bufU8,origFile:f,bofNum:null,soNum:null,ok:false,failReason:'LPO not found'});
+        noMatch++; prog(15+(i+1)*step); continue;
+      }
+
+      // ── Match against Excel — try multiple key formats ──────
+      let match = lpoMap[bofNum] || lpoMap[bofFull];
+      if (!match) {
+        // Normalize: strip spaces, dashes, "BP", "PO" prefix for fuzzy match
+        const clean = s => String(s).replace(/[\s\-]/g,'').replace(/^(BP|PO)/i,'').toUpperCase();
+        const cleanBof = clean(bofNum);
+        const key = Object.keys(lpoMap).find(k => clean(k) === cleanBof);
+        if (key) { match=lpoMap[key]; log(`  Matched normalized key: "${key}"`, 'lok'); }
+      }
+      // Also try with "PO" prefix if bofNum doesn't have it (for DH format)
+      if (!match && !/^PO/i.test(bofNum)) {
+        match = lpoMap['PO'+bofNum] || lpoMap['po'+bofNum];
+        if (match) log(`  Matched with PO prefix`, 'lok');
+      }
+      // Also try without "PO" prefix (Excel might store just the number)
+      if (!match && /^PO/i.test(bofNum)) {
+        match = lpoMap[bofNum.replace(/^PO/i,'')];
+        if (match) log(`  Matched without PO prefix`, 'lok');
+      }
+
+      if (!match) {
+        log(`  ⚠ "${bofNum}" not found in Excel`,'lw');
+        const sample = Object.keys(lpoMap).slice(0,4).join(', ');
+        log(`  Excel sample: ${sample}`,'li');
+        results.push({name:f.name,buf:bufU8,origFile:f,bofNum,soNum:null,ok:false,failReason:'Not in Excel'});
+        noMatch++; prog(15+(i+1)*step); continue;
+      }
+
+      const { so: soNum, total: excelTotal, totalRaw: excelTotalRaw, reason } = match;
+
+      // ── Total PO Value match (only when both sides have a value) ──
+      // - Vendor must have a totalArea taught (cv.totalArea present → pdfTotal extracted)
+      // - Excel must have a Total Value column configured with a valid number
+      const tolerance = parseFloat(document.getElementById('valTolerance').value);
+      const tol = isNaN(tolerance) ? 0.01 : tolerance;
+      const shouldCheckTotal = (pdfTotal !== null && pdfTotal !== undefined)
+                            && (excelTotal !== null && excelTotal !== undefined);
+
+      if (shouldCheckTotal) {
+        const diff = Math.abs(pdfTotal - excelTotal);
+        if (diff > tol) {
+          const fmt = n => (typeof n === 'number' ? n.toFixed(2) : String(n));
+          log(`  ✗ Total mismatch — PDF: ${fmt(pdfTotal)} vs Excel: ${fmt(excelTotal)} (Δ ${fmt(diff)} > tol ${fmt(tol)})`,'le');
+          results.push({
+            name: f.name, buf: bufU8, origFile: f,
+            bofNum, soNum: null, ok: false,
+            pdfTotal, excelTotal,
+            reason: reason || '',
+            failReason: `Total mismatch (PDF: ${fmt(pdfTotal)} vs Excel: ${fmt(excelTotal)})`
+          });
+          noMatch++; prog(15+(i+1)*step); continue;
+        } else {
+          log(`  ✓ Total matched — PDF: ${pdfTotal.toFixed(2)} = Excel: ${excelTotal.toFixed(2)} (Δ ${diff.toFixed(4)})`,'lok');
+        }
+      } else if (excelTotal !== null && excelTotal !== undefined && pdfTotal === null) {
+        // Excel has total but PDF total couldn't be extracted — warn but proceed
+        log(`  ⚠ Excel Total provided but PDF total not captured — skipping value check`,'lw');
+      }
+
+      log(`  ✓ [${docType}] Matched! LPO: "${bofNum}" → SO: "${soNum}"${reason ? ` · Reason: "${reason}"` : ''}`, 'lok');
+
+      log('  Stamping PDF…','li');
+      const stamped_bytes = await stampSO(buf.slice(0), soNum, bofHeadingItem, parseInt(document.getElementById('fontSize').value)||0);
+      log('  ✓ Done!','lok');
+
+      results.push({
+        name: f.name, buf: new Uint8Array(stamped_bytes), origFile: f,
+        bofNum, soNum, ok: true,
+        pdfTotal, excelTotal,
+        reason: reason || ''
+      });
+      stamped++;
+      prog(15+(i+1)*step);
+    }
+
+    prog(100);
+    log(`\n── Complete: ${stamped} stamped, ${noMatch} unmatched ──`,'lh');
+
+    showResults(stamped, noMatch);
+
+  } catch(err) {
+    log(`Fatal: ${err.message}`,'le'); console.error(err);
+  } finally {
+    btn.disabled=false; btn.textContent='⚡ Extract · Match · Stamp PDFs';
+    check();
+  }
+}
+
+// ── Results rendering ─────────────────────────────────────────────
+function showResults(stamped, noMatch) {
+  activeFilter='all';
+  document.getElementById('resArea').classList.add('show');
+  renderStats(stamped, noMatch);
+  renderList();
+}
+
+function renderStats(stamped, noMatch) {
+  const total = results.length;
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat ${activeFilter==='ok'?'active-ok':''}"   onclick="setFilter('ok')"   title="Stamped">
+      <span class="sv g">${stamped}</span><span>✅ Stamped</span>
+      <span class="stat-hint">click to filter · download</span>
+    </div>
+    <div class="stat ${activeFilter==='miss'?'active-miss':''}" onclick="setFilter('miss')" title="Unmatched">
+      <span class="sv y">${noMatch}</span><span>⚠ Not Matched</span>
+      <span class="stat-hint">click to filter · download ZIP</span>
+    </div>
+    <div class="stat ${activeFilter==='all'?'active-all':''}"  onclick="setFilter('all')"  title="All">
+      <span class="sv b">${total}</span><span>📄 Total PDFs</span>
+      <span class="stat-hint">click to show all</span>
+    </div>`;
+}
+
+function setFilter(f) {
+  activeFilter=f;
+  const stamped=results.filter(r=>r.ok).length;
+  const noMatch=results.filter(r=>!r.ok).length;
+  renderStats(stamped,noMatch);
+  renderList();
+}
+
+function renderList() {
+  const filtered = results.map((r,i)=>({r,i})).filter(({r}) => {
+    if (activeFilter==='ok')   return r.ok;
+    if (activeFilter==='miss') return !r.ok;
+    return true;
+  });
+
+  const labels = {all:'All PDFs', ok:'Stamped PDFs', miss:'Unmatched PDFs'};
+  document.getElementById('listLabel').innerHTML = `Showing <span>${filtered.length}</span> · ${labels[activeFilter]}`;
+
+  const dlBtn = document.getElementById('dlFilterBtn');
+  dlBtn.style.display = '';
+  dlBtn.textContent = activeFilter==='miss' ? '⬇ Download Unmatched as ZIP' : '⬇ Download Stamped as ZIP';
+
+  if (!filtered.length) {
+    document.getElementById('resItems').innerHTML =
+      `<div style="text-align:center;padding:32px;font-family:var(--mono);font-size:13px;color:var(--muted)">No PDFs in this category</div>`;
+    return;
+  }
+
+  document.getElementById('resItems').innerHTML = filtered.map(({r,i}) => {
+    // Format total values for display when present
+    const fmt = n => (typeof n === 'number' ? n.toFixed(2) : '');
+    const totalBadge = (r.pdfTotal !== undefined && r.pdfTotal !== null && r.excelTotal !== undefined && r.excelTotal !== null)
+      ? (r.ok
+          ? `<span class="rs" title="PDF total matches Excel" style="color:#fb923c;background:rgba(251,146,60,.1);border-color:rgba(251,146,60,.25)">💰 ${fmt(r.pdfTotal)}</span>`
+          : (r.failReason && r.failReason.startsWith('Total mismatch'))
+              ? `<span class="rmiss" title="${r.failReason}">💰 ${fmt(r.pdfTotal)} ≠ ${fmt(r.excelTotal)}</span>`
+              : `<span class="rl" title="Totals">💰 ${fmt(r.pdfTotal)}</span>`)
+      : '';
+    const reasonBadge = r.reason
+      ? `<span class="rl" style="color:#a78bfa;background:rgba(167,139,250,.1);border-color:rgba(167,139,250,.25)" title="Reason / Region (appended to filename)">📍 ${escapeHtml(r.reason)}</span>`
+      : '';
+
+    return `
+    <div class="ri ${r.ok?'ok':'miss'}">
+      <span style="font-size:20px">${r.ok?'✅':'⚠️'}</span>
+      <span class="rn" title="${r.name}">${r.name}</span>
+      ${r.bofNum ? `<span class="rl">BOF: ${r.bofNum}</span>` : '<span class="rmiss">No BOF</span>'}
+      ${r.soNum  ? `<span class="rs">SO: ${r.soNum}</span>`   : ''}
+      ${totalBadge}
+      ${reasonBadge}
+      ${r.failReason&&!r.ok ? `<span class="rmiss" title="${r.failReason}">⚠ ${r.failReason}</span>` : ''}
+      <div class="ri-btns">
+        <button class="vb" onclick="viewPdf(${i})">👁 View</button>
+        <button class="db" onclick="dlOne(${i})">⬇</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Simple HTML escape for attribute/text safety in dynamic badges
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── Modal viewer ──────────────────────────────────────────────────
+function viewPdf(i) {
+  const r=results[i]; if(!r) return;
+  modalResultIdx=i;
+  if(modalBlobUrl){URL.revokeObjectURL(modalBlobUrl);modalBlobUrl=null;}
+  const data=r.buf instanceof Uint8Array?r.buf:new Uint8Array(r.buf);
+  const blob=new Blob([data],{type:'application/pdf'});
+  modalBlobUrl=URL.createObjectURL(blob);
+  document.getElementById('modalTitle').textContent=r.name;
+  if(r.ok){
+    document.getElementById('modalBadges').innerHTML=`<span class="rl">BOF: ${r.bofNum}</span><span class="rs">SO: ${r.soNum}</span>`;
+    document.getElementById('modalInfo').textContent=`Stamped · ${(data.byteLength/1024).toFixed(1)} KB`;
+  } else {
+    document.getElementById('modalBadges').innerHTML=`${r.bofNum?`<span class="rl">BOF: ${r.bofNum}</span>`:'<span class="rmiss">No BOF found</span>'}<span class="rmiss">${r.failReason||'Not matched'}</span>`;
+    document.getElementById('modalInfo').textContent=`Original (unstamped) · ${(data.byteLength/1024).toFixed(1)} KB`;
+  }
+  document.getElementById('modalDlBtn').style.display='';
+  document.getElementById('modalFrame').src=modalBlobUrl;
+  document.getElementById('pdfModal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeModalDirect() {
+  document.getElementById('pdfModal').classList.remove('open');
+  document.getElementById('modalFrame').src='about:blank';
+  document.body.style.overflow='';
+  if(modalBlobUrl){setTimeout(()=>{URL.revokeObjectURL(modalBlobUrl);modalBlobUrl=null;},1000);}
+}
+function closeModal(e){if(e.target===document.getElementById('pdfModal'))closeModalDirect();}
+function dlFromModal(){if(modalResultIdx>=0)dlOne(modalResultIdx);}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModalDirect();});
+
+// ── Build output filename with reason suffix ──
+// Appends the reason/region with TWO spaces before it (per spec).
+// e.g. "LPO_12345_SO_stamped  Dubai.pdf"
+function buildOutputFilename(r) {
+  const base = r.name.replace(/\.pdf$/i, '');
+  const suffix = r.ok ? '_SO_stamped' : '_unmatched';
+  const reasonPart = r.reason ? '  ' + sanitizeFilenamePart(r.reason) : '';
+  return `${base}${suffix}${reasonPart}.pdf`;
+}
+
+// ── Downloads ─────────────────────────────────────────────────────
+function dlOne(i) {
+  const r=results[i]; if(!r) return;
+  try {
+    const data=r.buf instanceof Uint8Array?r.buf:new Uint8Array(r.buf);
+    const blob=new Blob([data],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=buildOutputFilename(r);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),10000);
+  } catch(e){log(`Download error: ${e.message}`,'le');}
+}
+
+async function dlAsZip(listFn, zipName, folderName) {
+  const list = listFn();
+  if(!list.length){alert('No PDFs to download.');return;}
+  const btn=document.getElementById('dlFilterBtn');
+  const orig=btn.textContent; btn.textContent='⏳ Zipping…'; btn.disabled=true;
+  try {
+    const zip=new JSZip();
+    const folder=zip.folder(folderName);
+    // Track duplicate names to avoid overwriting
+    const used = new Set();
+    list.forEach(r=>{
+      const data=r.buf instanceof Uint8Array?r.buf:new Uint8Array(r.buf);
+      let fname = buildOutputFilename(r);
+      // Guard against duplicates inside the ZIP
+      if (used.has(fname)) {
+        const base = fname.replace(/\.pdf$/i,'');
+        let k = 2;
+        while (used.has(`${base} (${k}).pdf`)) k++;
+        fname = `${base} (${k}).pdf`;
+      }
+      used.add(fname);
+      folder.file(fname,data);
+    });
+    const zipBlob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+    const now=new Date();
+    const ts=`${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+    const url=URL.createObjectURL(zipBlob);
+    const a=document.createElement('a');
+    a.href=url; a.download=`${zipName}_${ts}.zip`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),15000);
+    log(`ZIP: ${list.length} files → ${zipName}_${ts}.zip`,'lok');
+  } catch(e){log(`ZIP error: ${e.message}`,'le');alert('ZIP failed: '+e.message);}
+  finally{btn.textContent=orig;btn.disabled=false;}
+}
+
+function dlFiltered() {
+  if(activeFilter==='miss') {
+    dlAsZip(()=>results.filter(r=>!r.ok), 'Unmatched', 'Unmatched');
+  } else {
+    dlAsZip(()=>results.filter(r=>r.ok), 'Stamped', 'Stamped');
+  }
+}
+
+// ── Clear All ─────────────────────────────────────────────────────
+function clearAll() {
+  xlFile=null; pdfFiles=[]; results=[]; modalResultIdx=-1;
+  document.getElementById('xlIn').value='';
+  document.getElementById('pdfIn').value='';
+  document.getElementById('xlList').innerHTML='';
+  document.getElementById('prevTbl').innerHTML='';
+  document.getElementById('prevWrap').classList.remove('show');
+  const pp=document.getElementById('pdfPreviews');
+  pp.innerHTML=''; pp.classList.remove('show');
+  document.getElementById('logBox').innerHTML='';
+  document.getElementById('logBox').classList.remove('show');
+  document.getElementById('pbar').classList.remove('show');
+  document.getElementById('pfill').style.width='0%';
+  document.getElementById('resArea').classList.remove('show');
+  document.getElementById('statsBar').innerHTML='';
+  document.getElementById('resItems').innerHTML='';
+  check();
+}
+</script>
+</body>
+</html>
